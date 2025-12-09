@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # Laravel App
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: faceaccess-app
+    container_name: faceaccess-app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      APP_NAME: "FaceAccess Pro"
+      APP_ENV: local
+      APP_KEY: base64:SomeRandomKeyForDevOnly1234567890123456=
+      APP_DEBUG: 'true'
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: faceaccess
+      DB_USERNAME: sail
+      DB_PASSWORD: password
+      REDIS_HOST: redis
+      PYTHON_SERVICE_URL: http://face-service:5000
+    depends_on:
+      - db
+      - redis
+      - face-service
+    networks:
+      - faceaccess-net
+
+  # Nginx Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: faceaccess-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./backend:/var/www/html
+      - ./backend/nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - app
+    networks:
+      - faceaccess-net
+
+  # Python Face Recognition Microservice
+  face-service:
+    build:
+      context: ./face_service
+      dockerfile: Dockerfile
+    image: faceaccess-ai
+    container_name: faceaccess-ai
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./face_service:/app
+    environment:
+      PORT: 5000
+      GPU_ENABLE: "false" # Set true if nvidia-runtime is available
+    networks:
+      - faceaccess-net
+
+  # Database
+  db:
+    image: mysql:8.0
+    container_name: faceaccess-db
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: faceaccess
+      MYSQL_USER: sail
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - faceaccess-net
+
+  # Redis for Queues & Broadcasting
+  redis:
+    image: redis:alpine
+    container_name: faceaccess-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - faceaccess-net
+
+networks:
+  faceaccess-net:
+    driver: bridge
+
+volumes:
+  db-data:
+  redis-data:
